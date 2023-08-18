@@ -117,18 +117,27 @@ def save_with_checksum(content, path):
     path = path.parent / (path.stem + "-" + sig + path.suffix)
     path.write_bytes(buf.getvalue())
 
+import  munch
+def demunch_to_dict(demunch_obj):
+    if isinstance(demunch_obj, munch.DefaultMunch):
+        return {k: demunch_to_dict(v) for k,v in demunch_obj.items()}
+    else:
+        return demunch_obj
 
 def serialize_model(model, training_args, quantizer=None, half=True):
     args, kwargs = model._init_args_kwargs
     klass = model.__class__
 
     state = get_state(model, quantizer, half)
+
+    primitive_conf = demunch_to_dict(training_args)
+    conf = OmegaConf.create(primitive_conf)
     return {
         'klass': klass,
         'args': args,
         'kwargs': kwargs,
         'state': state,
-        'training_args': OmegaConf.to_container(training_args, resolve=True),
+        'training_args': OmegaConf.to_container(conf, resolve=True),
     }
 
 

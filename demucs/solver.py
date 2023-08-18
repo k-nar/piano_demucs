@@ -6,10 +6,10 @@
 """Main training loop."""
 
 import logging
-
-from dora import get_xp
 from dora.utils import write_and_rename
-from dora.log import LogProgress, bold
+from dora.log import LogProgress
+from dora import Link
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 
@@ -19,9 +19,14 @@ from .ema import ModelEMA
 from .evaluate import evaluate, new_sdr
 from .svd import svd_penalty
 from .utils import pull_metric, EMA
-
+from data import lp_degradation_
 logger = logging.getLogger(__name__)
-
+logger.setLevel(logging.DEBUG)
+#console_handler = logging.StreamHandler()
+#console_handler.setLevel(logging.DEBUG)
+#formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+#console_handler.setFormatter(formatter)
+#logger.addHandler(console_handler)
 
 def _summary(metrics):
     return " | ".join(f"{key.capitalize()}={val}" for key, val in metrics.items())
@@ -49,36 +54,21 @@ class Solver(object):
                 for decay in decays:
                     self.emas[kind].append(ModelEMA(self.model, decay, device=device))
 
-        # data augment
-        augments = [augment.Shift(shift=int(args.dset.samplerate * args.dset.shift),
-                                  same=args.augment.shift_same)]
-        if args.augment.flip:
-            augments += [augment.FlipChannels(), augment.FlipSign()]
-        for aug in ['scale', 'remix']:
-            kw = getattr(args.augment, aug)
-            if kw.proba:
-                augments.append(getattr(augment, aug.capitalize())(**kw))
-        self.augment = torch.nn.Sequential(*augments)
-
-        xp = get_xp()
-        self.folder = xp.folder
+        self.folder = Path("../")
         # Checkpoints
-        self.checkpoint_file = xp.folder / 'checkpoint.th'
-        self.best_file = xp.folder / 'best.th'
+        self.checkpoint_file = self.folder / 'checkpoint.th'
+        self.best_file = self.folder / 'best.th'
         logger.debug("Checkpoint will be saved to %s", self.checkpoint_file.resolve())
         self.best_state = None
         self.best_changed = False
-
-        self.link = xp.link
-        self.history = self.link.history
-
         self._reset()
+        self.link = Link(self.folder / 'history')
 
     def _serialize(self, epoch):
         package = {}
         package['state'] = self.model.state_dict()
         package['optimizer'] = self.optimizer.state_dict()
-        package['history'] = self.history
+        package['history'] = self.link.history
         package['best_state'] = self.best_state
         package['args'] = self.args
         for kind, emas in self.emas.items():
@@ -107,7 +97,7 @@ class Solver(object):
             package = torch.load(self.checkpoint_file, 'cpu')
             self.model.load_state_dict(package['state'])
             self.optimizer.load_state_dict(package['optimizer'])
-            self.history[:] = package['history']
+            #self.history[:] = package['history']
             self.best_state = package['best_state']
             for kind, emas in self.emas.items():
                 for k, ema in enumerate(emas):
@@ -171,22 +161,23 @@ class Solver(object):
 
     def train(self):
         # Optimizing the model
-        if self.history:
+        # Optimizing the model
+        if self.link.history:
             logger.info("Replaying metrics from previous run")
-        for epoch, metrics in enumerate(self.history):
+        for epoch, metrics in enumerate(self.link.history):
             formatted = self._format_train(metrics['train'])
             logger.info(
-                bold(f'Train Summary | Epoch {epoch + 1} | {_summary(formatted)}'))
+                f'Train Summary | Epoch {epoch + 1} | {_summary(formatted)}')
             formatted = self._format_train(metrics['valid'])
             logger.info(
-                bold(f'Valid Summary | Epoch {epoch + 1} | {_summary(formatted)}'))
+                print(f'Valid Summary | Epoch {epoch + 1} | {_summary(formatted)}'))
             if 'test' in metrics:
                 formatted = self._format_test(metrics['test'])
                 if formatted:
-                    logger.info(bold(f"Test Summary | Epoch {epoch + 1} | {_summary(formatted)}"))
-
+                    logger.info(f"Test Summary | Epoch {epoch + 1} | {_summary(formatted)}")
         epoch = 0
-        for epoch in range(len(self.history), self.args.epochs):
+        #valid_losses = []
+        for epoch in range(len(self.link.history), self.args.epochs):
             # Train one epoch
             self.model.train()  # Turn on BatchNorm & Dropout
             metrics = {}
@@ -195,7 +186,7 @@ class Solver(object):
             metrics['train'] = self._run_one_epoch(epoch)
             formatted = self._format_train(metrics['train'])
             logger.info(
-                bold(f'Train Summary | Epoch {epoch + 1} | {_summary(formatted)}'))
+                f'Train Summary | Epoch {epoch + 1} | {_summary(formatted)}')
 
             # Cross validation
             logger.info('-' * 70)
@@ -243,11 +234,11 @@ class Solver(object):
 
             formatted = self._format_train(metrics['valid'])
             logger.info(
-                bold(f'Valid Summary | Epoch {epoch + 1} | {_summary(formatted)}'))
+                f'Valid Summary | Epoch {epoch + 1} | {_summary(formatted)}')
 
             # Save the best model
-            if valid_loss == best_loss or self.args.dset.train_valid:
-                logger.info(bold('New best valid loss %.4f'), valid_loss)
+            if valid_loss == best_loss:
+                logger.info('New best valid loss %.4f', valid_loss)
                 self.best_state = states.copy_state(state)
                 self.best_changed = True
 
@@ -278,9 +269,8 @@ class Solver(object):
                     with torch.no_grad():
                         metrics['test'] = evaluate(self, compute_sdr=compute_sdr)
                 formatted = self._format_test(metrics['test'])
-                logger.info(bold(f"Test Summary | Epoch {epoch + 1} | {_summary(formatted)}"))
+                logger.info(f"Test Summary | Epoch {epoch + 1} | {_summary(formatted)}")
             self.link.push_metrics(metrics)
-
             if distrib.rank == 0:
                 # Save model each epoch
                 self._serialize(epoch)
@@ -288,6 +278,11 @@ class Solver(object):
             if is_last:
                 break
 
+    def lp_degradation(self, y):
+        with torch.no_grad():
+            x = y.detach().clone()
+            lp_degradation_(x)
+            return x
     def _run_one_epoch(self, epoch, train=True):
         args = self.args
         data_loader = self.loaders['train'] if train else self.loaders['valid']
@@ -305,12 +300,9 @@ class Solver(object):
 
         for idx, sources in enumerate(logprog):
             sources = sources.to(self.device)
-            if train:
-                sources = self.augment(sources)
-                mix = sources.sum(dim=1)
-            else:
-                mix = sources[:, 0]
-                sources = sources[:, 1:]
+            mix = self.lp_degradation(sources)
+            sources.unsqueeze_(1)
+
 
             if not train and self.args.valid_apply:
                 estimate = apply_model(self.model, mix, split=self.args.test.split, overlap=0)
@@ -318,6 +310,7 @@ class Solver(object):
                 estimate = self.dmodel(mix)
             if train and hasattr(self.model, 'transform_target'):
                 sources = self.model.transform_target(mix, sources)
+
             assert estimate.shape == sources.shape, (estimate.shape, sources.shape)
             dims = tuple(range(2, sources.dim()))
 
@@ -333,7 +326,7 @@ class Solver(object):
             else:
                 raise ValueError(f"Invalid loss {self.args.loss}")
             weights = torch.tensor(args.weights).to(sources)
-            loss = (loss * weights).sum() / weights.sum()
+            #loss = (loss * weights).sum() / weights.sum()
 
             ms = 0
             if self.quantizer is not None:
@@ -342,7 +335,7 @@ class Solver(object):
                 loss += args.quant.diffq * ms
 
             losses = {}
-            losses['reco'] = (reco * weights).sum() / weights.sum()
+            losses['reco'] = reco #(reco * weights).sum() / weights.sum()
             losses['ms'] = ms
 
             if not train:
@@ -368,17 +361,20 @@ class Solver(object):
             # optimize model in training mode
             if train:
                 loss.backward()
-                grad_norm = 0
-                grads = []
-                for p in self.model.parameters():
-                    if p.grad is not None:
-                        grad_norm += p.grad.data.norm()**2
-                        grads.append(p.grad.data)
-                losses['grad'] = grad_norm ** 0.5
+
                 if args.optim.clip_grad:
-                    torch.nn.utils.clip_grad_norm_(
+                    losses['grad'] = torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(),
                         args.optim.clip_grad)
+                else:
+                    grad_norm = 0
+                    grads = []
+                    for p in self.model.parameters():
+                        if p.grad is not None:
+                            grad_norm += p.grad.data.norm() ** 2
+                            grads.append(p.grad.data)
+                    losses['grad'] = grad_norm ** 0.5
+
 
                 if self.args.flag == 'uns':
                     for n, p in self.model.named_parameters():
