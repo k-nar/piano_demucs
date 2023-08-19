@@ -116,7 +116,7 @@ svd = {
 args = {
     "epochs": 100,
     "batch_size": 6,
-    "max_batches": 100000,
+    "max_batches": 8,
     'optim' : optim_params,
     'htdemucs' : ht_demucs_params,
     'quant' : {
@@ -194,7 +194,7 @@ def get_datasets(bs):
 
 
 if __name__ == "__main__":
-    model = get_model().to('cuda')
+    model = get_model()
     optimizer = get_optimizer(model)
     dataloaders = get_datasets(args.batch_size)
     solver = Solver(dataloaders, model, optimizer, args)

@@ -125,7 +125,7 @@ class Solver(object):
         """Formatting for train/valid metrics."""
         losses = {
             'loss': format(metrics['loss'], ".4f"),
-            'reco': format(metrics['reco'], ".4f"),
+          #  'reco': format(metrics['reco'], ".4f"),
         }
         if 'nsdr' in metrics:
             losses['nsdr'] = format(metrics['nsdr'], ".3f")
@@ -316,63 +316,52 @@ class Solver(object):
             dims = tuple(range(2, sources.dim()))
 
             if args.optim.loss == 'l1':
-                loss = F.l1_loss(estimate, sources, reduction='none')
-                loss = loss.mean(dims).mean(0)
-                reco = loss
+                loss = F.l1_loss(estimate, sources)
             elif args.optim.loss == 'mse':
-                loss = F.mse_loss(estimate, sources, reduction='none')
-                loss = loss.mean(dims)
-                reco = loss**0.5
-                reco = reco.mean(0)
+                loss = F.mse_loss(estimate, sources)
             else:
                 raise ValueError(f"Invalid loss {self.args.loss}")
-            weights = torch.tensor(args.weights).to(sources)
-            #loss = (loss * weights).sum() / weights.sum()
 
-            ms = 0
-            if self.quantizer is not None:
-                ms = self.quantizer.model_size()
-            if args.quant.diffq:
-                loss += args.quant.diffq * ms
+            # ms = 0
+            # if self.quantizer is not None:
+            #     ms = self.quantizer.model_size()
+            # if args.quant.diffq:
+            #     loss += args.quant.diffq * ms
 
             losses = {}
-            losses['reco'] = reco #(reco * weights).sum() / weights.sum()
-            losses['ms'] = ms
+            #losses['reco'] = reco #(reco * weights).sum() / weights.sum()
+            #losses['ms'] = ms
 
             if not train:
-                nsdrs = new_sdr(sources, estimate.detach()).mean(0)
+                losses[f'nsdr_pinno'] = new_sdr(sources, estimate.detach()).mean()
                 total = 0
-                for source, nsdr, w in zip(self.model.sources, nsdrs, weights):
-                    losses[f'nsdr_{source}'] = nsdr
-                    total += w * nsdr
-                losses['nsdr'] = total / weights.sum()
 
-            if train and args.svd.penalty > 0:
-                kw = dict(args.svd)
-                kw.pop('penalty')
-                penalty = svd_penalty(self.model, **kw)
-                losses['penalty'] = penalty
-                loss += args.svd.penalty * penalty
+            # if train and args.svd.penalty > 0:
+            #     kw = dict(args.svd)
+            #     kw.pop('penalty')
+            #     penalty = svd_penalty(self.model, **kw)
+            #     losses['penalty'] = penalty
+            #     loss += args.svd.penalty * penalty
 
             losses['loss'] = loss
 
-            for k, source in enumerate(self.model.sources):
-                losses[f'reco_{source}'] = reco[k]
+            # for k, source in enumerate(self.model.sources):
+            #     losses[f'reco_{source}'] = reco[k]
 
             # optimize model in training mode
             if train:
                 loss.backward()
 
-                if args.optim.clip_grad:
-                    losses['grad'] = torch.nn.utils.clip_grad_norm_(self.model.parameters(), args.optim.clip_grad).item()
-                else:
-                    grad_norm = 0
-                    grads = []
-                    for p in self.model.parameters():
-                        if p.grad is not None:
-                            grad_norm += p.grad.data.norm() ** 2
-                            grads.append(p.grad.data)
-                    losses['grad'] = grad_norm ** 0.5
+                # if args.optim.clip_grad:
+                #     losses['grad'] = torch.nn.utils.clip_grad_norm_(self.model.parameters(), args.optim.clip_grad).item()
+                # else:
+                #     grad_norm = 0
+                #     grads = []
+                #     for p in self.model.parameters():
+                #         if p.grad is not None:
+                #             grad_norm += p.grad.data.norm() ** 2
+                #             grads.append(p.grad.data)
+                #     losses['grad'] = grad_norm ** 0.5
 
 
                 if self.args.flag == 'uns':
@@ -387,7 +376,7 @@ class Solver(object):
             logs = self._format_train(losses)
             logprog.update(**logs)
             # Just in case, clear some memory
-            del loss, estimate, reco, ms
+            del loss, estimate
             if args.max_batches == idx:
                 break
             if self.args.debug and train:

@@ -3,7 +3,9 @@ import tqdm
 from torch import Tensor
 import torchaudio
 
-DATASET_PATH = "F:/piano_restauration"
+#DATASET_PATH = "F:/piano_restauration"
+DATASET_PATH = "/Users/alex/dev/dataset/piano_restauration"
+
 
 from torchaudio import functional as F
 from torchaudio import transforms as T
