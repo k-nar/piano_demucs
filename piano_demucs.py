@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 logger.addHandler(handler)
 
 misc = {
-    'num_workers': 10,
-    'num_prints': 4,
-    'show': False,
+    'num_workers': 4,
+    'num_prints': 100000,
+    'show': True,
     'verbose': False
 }
 
@@ -115,8 +115,8 @@ svd = {
 
 args = {
     "epochs": 100,
-    "batch_size": 30,
-    "max_batches": 2,
+    "batch_size": 6,
+    "max_batches": 100000,
     'optim' : optim_params,
     'htdemucs' : ht_demucs_params,
     'quant' : {
@@ -180,23 +180,23 @@ def get_model():
         'sources': ["piano"],
         'audio_channels': 1,
         'samplerate': 44100,
-        'segment': 12,
+        'segment': 40,
     }
 
     return HTDemucs(**extra, **ht_demucs_params)
 
-def get_datasets():
+def get_datasets(bs):
     train_dataset = PianoDataset(train=True, seq_len=44100*10, mono=True)
     val_dataset = PianoDataset( train=False, seq_len=44100*10, mono=True)
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=2, num_workers=4, pin_memory=True)
-    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=2, num_workers=4, pin_memory=True)
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, num_workers=4, pin_memory=True)
+    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, num_workers=4, pin_memory=True)
     return {"train": train_dataloader, "valid": val_dataloader}
 
 
 if __name__ == "__main__":
-    model = get_model()
+    model = get_model().to('cuda')
     optimizer = get_optimizer(model)
-    dataloaders = get_datasets()
+    dataloaders = get_datasets(args.batch_size)
     solver = Solver(dataloaders, model, optimizer, args)
     solver.train()
 

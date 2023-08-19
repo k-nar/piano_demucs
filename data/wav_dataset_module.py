@@ -3,7 +3,7 @@ import tqdm
 from torch import Tensor
 import torchaudio
 
-DATASET_PATH = "/Users/alex/dev/dataset/piano_restauration"
+DATASET_PATH = "F:/piano_restauration"
 
 from torchaudio import functional as F
 from torchaudio import transforms as T
@@ -67,14 +67,14 @@ def lp_degradation_(samples: Tensor):
     samples_transformed = samples[-nb_samples_transform:, ...]
     vinyl_noise = AddBackgroundNoise(background_paths=DATASET_PATH + "/augment/noise/vinyl", min_snr_in_db=3.0,
                                      max_snr_in_db=30.0, p=0.5, sample_rate=SAMPLE_RATE)
-    other_noise = AddBackgroundNoise(background_paths=DATASET_PATH + "/augment/noise/other", min_snr_in_db=1.0,
-                                     max_snr_in_db=20.0, p=0.33, sample_rate=SAMPLE_RATE)
+    #other_noise = AddBackgroundNoise(background_paths=DATASET_PATH + "/augment/noise/other", min_snr_in_db=1.0,
+    #                                 max_snr_in_db=20.0, p=0.33, sample_rate=SAMPLE_RATE)
     bandstop = BandStopFilter(p=0.2, min_bandwidth_fraction=0.05, max_bandwidth_fraction=1.0, sample_rate=SAMPLE_RATE)
     reverb = ApplyImpulseResponse(ir_paths=DATASET_PATH + "/augment/reverb", p=0.30, sample_rate=SAMPLE_RATE)
     lowpass = LowPassFilter(p=0.7, min_cutoff_freq=1000, max_cutoff_freq=16000, sample_rate=SAMPLE_RATE)
     colored_noise = AddColoredNoise(p=0.3, sample_rate=SAMPLE_RATE)
     white_noise = AddColoredNoise(p=0.9, min_f_decay=0, sample_rate=SAMPLE_RATE)
-    transforms = [bandstop, reverb, lowpass, vinyl_noise, other_noise, colored_noise, white_noise]
+    transforms = [bandstop, reverb, lowpass, vinyl_noise, colored_noise, white_noise]
     random.shuffle(transforms)
     for transform in transforms:
         samples_transformed = transform(samples_transformed, sample_rate=SAMPLE_RATE)

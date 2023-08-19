@@ -63,6 +63,7 @@ def eval_track(references, estimates, win, hop, compute_sdr=True):
             bsseval_sources_version=False)[:-1]
         return scores, new_scores
 
+from data import PianoDataset
 
 def evaluate(solver, compute_sdr=False):
     """
@@ -79,11 +80,8 @@ def evaluate(solver, compute_sdr=False):
     json_folder.mkdir(exist_ok=True, parents=True)
 
     # we load tracks from the original musdb set
-    if args.test.nonhq is None:
-        test_set = musdb.DB(args.dset.musdb, subsets=["test"], is_wav=True)
-    else:
-        test_set = musdb.DB(args.test.nonhq, subsets=["test"], is_wav=False)
-    src_rate = args.dset.musdb_samplerate
+    test_set = PianoDataset(train=False, mono=True, seq_len=441000)
+    src_rate = 44100
 
     eval_device = 'cpu'
 

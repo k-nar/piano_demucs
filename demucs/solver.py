@@ -54,7 +54,7 @@ class Solver(object):
                 for decay in decays:
                     self.emas[kind].append(ModelEMA(self.model, decay, device=device))
 
-        self.folder = Path("../")
+        self.folder = Path("./")
         # Checkpoints
         self.checkpoint_file = self.folder / 'checkpoint.th'
         self.best_file = self.folder / 'best.th'
@@ -97,7 +97,7 @@ class Solver(object):
             package = torch.load(self.checkpoint_file, 'cpu')
             self.model.load_state_dict(package['state'])
             self.optimizer.load_state_dict(package['optimizer'])
-            #self.history[:] = package['history']
+            self.history[:] = package['history']
             self.best_state = package['best_state']
             for kind, emas in self.emas.items():
                 for k, ema in enumerate(emas):
@@ -267,9 +267,10 @@ class Solver(object):
                 compute_sdr = self.args.test.sdr and is_last
                 with states.swap_state(self.model, state):
                     with torch.no_grad():
-                        metrics['test'] = evaluate(self, compute_sdr=compute_sdr)
-                formatted = self._format_test(metrics['test'])
-                logger.info(f"Test Summary | Epoch {epoch + 1} | {_summary(formatted)}")
+                        metrics['test'] = 0
+                        #metrics['test'] = evaluate(self, compute_sdr=compute_sdr)
+                #formatted = self._format_test(metrics['test'])
+                #logger.info(f"Test Summary | Epoch {epoch + 1} | {_summary(formatted)}")
             self.link.push_metrics(metrics)
             if distrib.rank == 0:
                 # Save model each epoch
@@ -363,9 +364,7 @@ class Solver(object):
                 loss.backward()
 
                 if args.optim.clip_grad:
-                    losses['grad'] = torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
-                        args.optim.clip_grad)
+                    losses['grad'] = torch.nn.utils.clip_grad_norm_(self.model.parameters(), args.optim.clip_grad).item()
                 else:
                     grad_norm = 0
                     grads = []
