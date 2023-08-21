@@ -12,8 +12,8 @@ from torch_audiomentations.utils.io import Audio
 from torch_audiomentations.utils.fft import rfft, irfft
 from math import ceil
 
-DATASET_PATH = "F:/piano_restauration"
-#DATASET_PATH = "/Users/alex/dev/dataset/piano_restauration"
+#DATASET_PATH = "F:/piano_restauration"
+DATASET_PATH = "/Users/alex/dev/dataset/piano_restauration"
 
 
 from torchaudio import functional as F

@@ -57,7 +57,7 @@ ht_demucs_params = {
     'bottom_channels': 0,
     't_layers': 5,
     't_hidden_scale': 4.0,
-    't_heads': 8,
+    't_heads': 16,
     't_dropout': 0.0,
     't_layer_scale': True,
     't_gelu': True,
@@ -114,7 +114,7 @@ svd = {
 }
 
 args = {
-    "epochs": 50,
+    "epochs": 20,
     "batch_size": 6,
     "max_batches": 100,
     'optim' : optim_params,
@@ -131,7 +131,7 @@ args = {
     },
     'misc': misc,
     'test': test,
-    'seed': 42,
+    'seed': 43,
     'debug': False,
     'valid_apply': True,
     'flag': 'None',
@@ -195,7 +195,7 @@ def get_datasets(bs):
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision('medium')
-    model = get_model().to('cuda')
+    model = get_model()#.to('cuda')
     #model = torch.compile(model)
     optimizer = get_optimizer(model)
     dataloaders = get_datasets(args.batch_size)

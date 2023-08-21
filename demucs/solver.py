@@ -306,8 +306,6 @@ class Solver(object):
         for idx, sources in enumerate(logprog):
             sources = sources.to(self.device)
             mix = self.lp_degradation(sources)
-            sources.unsqueeze_(1)
-
 
             if not train and self.args.valid_apply:
                 estimate = apply_model(self.model, mix, split=self.args.test.split, overlap=0)
@@ -317,7 +315,7 @@ class Solver(object):
                 sources = self.model.transform_target(mix, sources)
 
             assert estimate.shape == sources.shape, (estimate.shape, sources.shape)
-            dims = tuple(range(2, sources.dim()))
+            #dims = tuple(range(2, sources.dim()))
 
             if args.optim.loss == 'l1':
                 loss = F.l1_loss(estimate, sources)

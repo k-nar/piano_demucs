@@ -22,8 +22,9 @@ from .demucs import rescale_module
 from .states import capture_init
 from .spec import spectro, ispectro
 from .hdemucs import pad1d, ScaledEmbedding, HEncLayer, MultiWrap, HDecLayer
-
-
+from torchaudio.functional import griffinlim
+from torch import Tensor
+from typing import Optional, Tuple
 class HTDemucs(nn.Module):
     """
     Spectrogram and hybrid Demucs model.
@@ -535,9 +536,8 @@ class HTDemucs(nn.Module):
                 if mix.shape[-1] < training_length:
                     length_pre_pad = mix.shape[-1]
                     mix = F.pad(mix, (0, training_length - length_pre_pad))
-        z = self._spec(mix)
-        mag = self._magnitude(z).to(mix.device)
-        x = mag
+        x = self._spec(mix)
+        x = self._magnitude(x).to(mix.device) # x actually contains phase in the channel dimension.
 
         B, C, Fq, T = x.shape
 
@@ -622,8 +622,9 @@ class HTDemucs(nn.Module):
         assert len(saved_t) == 0
 
         S = len(self.sources)
-        x = x.view(B, S, -1, Fq, T)
-        x = x * std[:, None] + mean[:, None]
+        assert S == 1, "only one source supported for now"
+        #x = x.view(B, -1, Fq, T)
+        x = x * std + mean
 
         # to cpu as mps doesnt support complex numbers
         # demucs issue #435 ##432
@@ -642,27 +643,114 @@ class HTDemucs(nn.Module):
         # else:
         #     x = self._ispec(zout, length)
 
+
         # x back to time domain
+        # B,S,C,Fr,T = x.shape
+        #x.squeeze_(1)
+        assert x.size(1) == 2, "need reshape for stereo"
+        z = torch.polar(x[:,0,...],x[:,1,...])
+        z = z[:,None,...]
+        # l = length
+        # if self.use_train_segment and not self.training:
+        #     l= training_length
+        # with torch.no_grad():
+        #     phase = HTDemucs.estimate_phase(x, torch.hann_window(self.nfft).to(x), self.nfft, self.hop_length, self.nfft, 1, 32, 0.98, l, rand_init=True)
+        # z = x * phase
         if self.use_train_segment:
             if self.training:
-                x = self._ispec(x, length)
+                x = self._ispec(z, length)
             else:
-                x = self._ispec(x, training_length)
+                x = self._ispec(z, training_length)
         else:
-            x = self._ispec(x, length)
+            x = self._ispec(z, length)
         # back to mps device
         if x_is_mps:
             x = x.to("mps")
 
         if self.use_train_segment:
             if self.training:
-                xt = xt.view(B, S, -1, length)
+                xt = xt.view(B,  -1, length)
             else:
-                xt = xt.view(B, S, -1, training_length)
+                xt = xt.view(B,  -1, training_length)
         else:
-            xt = xt.view(B, S, -1, length)
-        xt = xt * stdt[:, None] + meant[:, None]
+            xt = xt.view(B,  -1, length)
+        xt = xt * stdt + meant
         x = xt + x
         if length_pre_pad:
             x = x[..., :length_pre_pad]
         return x
+
+
+    @staticmethod
+    def _get_complex_dtype(real_dtype: torch.dtype):
+        if real_dtype == torch.double:
+            return torch.cdouble
+        if real_dtype == torch.float:
+            return torch.cfloat
+        if real_dtype == torch.half:
+            return torch.complex32
+        raise ValueError(f"Unexpected dtype {real_dtype}")
+
+    @staticmethod
+    def estimate_phase(
+            specgram: Tensor,
+            window: Tensor,
+            n_fft: int,
+            hop_length: int,
+            win_length: int,
+            power: float,
+            n_iter: int,
+            momentum: float,
+            length: Optional[int],
+            rand_init: bool,
+    ) -> Tensor:
+        if not 0 <= momentum < 1:
+            raise ValueError("momentum must be in range [0, 1). Found: {}".format(momentum))
+
+        momentum = momentum / (1 + momentum)
+
+        # pack batch
+        shape = specgram.size()
+        specgram = specgram.reshape([-1] + list(shape[-2:]))
+
+        specgram = specgram.pow(1 / power)
+
+        # initialize the phase
+        if rand_init:
+            angles = torch.rand(specgram.size(), dtype=HTDemucs._get_complex_dtype(specgram.dtype), device=specgram.device)
+        else:
+            angles = torch.full(specgram.size(), 1, dtype=HTDemucs._get_complex_dtype(specgram.dtype), device=specgram.device)
+
+        # And initialize the previous iterate to 0
+        tprev = torch.tensor(0.0, dtype=specgram.dtype, device=specgram.device)
+        for _ in range(n_iter):
+            # Invert with our current estimate of the phases
+            inverse = torch.istft(
+                specgram * angles, n_fft=n_fft, hop_length=hop_length, win_length=win_length, window=window,
+                length=length
+            )
+
+            # Rebuild the spectrogram
+            rebuilt = torch.stft(
+                input=inverse,
+                n_fft=n_fft,
+                hop_length=hop_length,
+                win_length=win_length,
+                window=window,
+                center=True,
+                pad_mode="reflect",
+                normalized=False,
+                onesided=True,
+                return_complex=True,
+            )
+
+            # Update our phase estimates
+            angles = rebuilt
+            if momentum:
+                angles = angles - tprev.mul_(momentum)
+            angles = angles.div(angles.abs().add(1e-16))
+
+            # Store the previous iterate
+            tprev = rebuilt
+
+        return angles
