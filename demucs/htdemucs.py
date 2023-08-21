@@ -455,9 +455,8 @@ class HTDemucs(nn.Module):
         # in which case we just move the complex dimension to the channel one.
         if self.cac:
             B, C, Fr, T = z.shape
-
-            #m = torch.view_as_real(z).permute(0, 1, 4, 2, 3)
-            m = torch.stack((z.abs(), z.angle()), dim=2)
+            m = torch.view_as_real(z).permute(0, 1, 4, 2, 3)
+            #m = torch.stack((z.abs(), z.angle()), dim=2)
             m = m.reshape(B, C * 2, Fr, T)
         else:
             m = z.abs()
@@ -650,8 +649,12 @@ class HTDemucs(nn.Module):
         # B,S,C,Fr,T = x.shape
         #x.squeeze_(1)
         assert x.size(1) == 2, "need reshape for stereo"
-        z = torch.polar(x[:,0,...],x[:,1,...])
-        z = z[:,None,...]
+        B, C, Fr, T = x.shape
+        x = x.permute(0, 2, 3, 1) # put channels last
+        x = torch.view_as_complex(x.contiguous())
+
+        #z = torch.polar(x[:,0,...],x[:,1,...])
+        #z = z[:,None,...]
         # l = length
         # if self.use_train_segment and not self.training:
         #     l= training_length
@@ -660,11 +663,11 @@ class HTDemucs(nn.Module):
         # z = x * phase
         if self.use_train_segment:
             if self.training:
-                x = self._ispec(z, length)
+                x = self._ispec(x, length)
             else:
-                x = self._ispec(z, training_length)
+                x = self._ispec(x, training_length)
         else:
-            x = self._ispec(z, length)
+            x = self._ispec(x, length)
         # back to mps device
         if x_is_mps:
             x = x.to("mps")
