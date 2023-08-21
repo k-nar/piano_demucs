@@ -32,11 +32,11 @@ def new_sdr(references, estimates):
     Compute the SDR according to the MDX challenge definition.
     Adapted from AIcrowd/music-demixing-challenge-starter-kit (MIT license)
     """
-    assert references.dim() == 4
-    assert estimates.dim() == 4
+    assert references.dim() == 3
+    assert estimates.dim() == 3
     delta = 1e-7  # avoid numerical errors
-    num = th.sum(th.square(references), dim=(2, 3))
-    den = th.sum(th.square(references - estimates), dim=(2, 3))
+    num = th.sum(th.square(references), dim=-1)
+    den = th.sum(th.square(references - estimates), dim=-1)
     num += delta
     den += delta
     scores = 10 * th.log10(num / den)
