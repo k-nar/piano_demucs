@@ -220,7 +220,7 @@ def apply_model(model: tp.Union[BagOfModels, Model],
         return out
     elif split:
         kwargs['split'] = False
-        out = th.zeros(batch, len(model.sources), channels, length, device=mix.device)
+        out = th.zeros(batch, channels, length, device=mix.device)
         sum_weight = th.zeros(length, device=mix.device)
         if segment is None:
             segment = model.segment
