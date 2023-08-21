@@ -652,6 +652,7 @@ class HTDemucs(nn.Module):
         B, C, Fr, T = x.shape
         x = x.permute(0, 2, 3, 1) # put channels last
         x = torch.view_as_complex(x.contiguous())
+        x = x[:,None,...]
 
         #z = torch.polar(x[:,0,...],x[:,1,...])
         #z = z[:,None,...]
