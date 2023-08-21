@@ -455,7 +455,9 @@ class HTDemucs(nn.Module):
         # in which case we just move the complex dimension to the channel one.
         if self.cac:
             B, C, Fr, T = z.shape
-            m = torch.view_as_real(z).permute(0, 1, 4, 2, 3)
+
+            #m = torch.view_as_real(z).permute(0, 1, 4, 2, 3)
+            m = torch.stack((z.abs(), z.angle()), dim=2)
             m = m.reshape(B, C * 2, Fr, T)
         else:
             m = z.abs()
