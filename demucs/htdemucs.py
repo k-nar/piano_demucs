@@ -632,16 +632,24 @@ class HTDemucs(nn.Module):
         x_is_mps = x.device.type == "mps"
         if x_is_mps:
             x = x.cpu()
+        # no mask model
+        #zout = self._mask(z, x)
+        # if self.use_train_segment:
+        #     if self.training:
+        #         x = self._ispec(zout, length)
+        #     else:
+        #         x = self._ispec(zout, training_length)
+        # else:
+        #     x = self._ispec(zout, length)
 
-        zout = self._mask(z, x)
+        # x back to time domain
         if self.use_train_segment:
             if self.training:
-                x = self._ispec(zout, length)
+                x = self._ispec(x, length)
             else:
-                x = self._ispec(zout, training_length)
+                x = self._ispec(x, training_length)
         else:
-            x = self._ispec(zout, length)
-
+            x = self._ispec(x, length)
         # back to mps device
         if x_is_mps:
             x = x.to("mps")

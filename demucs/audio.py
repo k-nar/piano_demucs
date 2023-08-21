@@ -246,7 +246,7 @@ def save_audio(wav: torch.Tensor,
     will save as mp3 with the given `bitrate`. Use `preset` to set mp3 quality:
     2 for highest quality, 7 for fastest speed
     """
-    wav = prevent_clip(wav, mode=clip)
+    wav = prevent_clip(wav)
     path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".mp3":
