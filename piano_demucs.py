@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 logger.addHandler(handler)
 
 misc = {
-    'num_workers': 4,
-    'num_prints': 100000,
+    'num_workers': 6,
+    'num_prints': 100,
     'show': True,
     'verbose': False
 }
@@ -97,7 +97,7 @@ test = {
     'shifts': 1,
     'overlap': 0.25,
     'sdr': True,
-    'metric': 'loss',
+    'metric': 'nsdr_piano',
     'nonhq': None
 }
 
@@ -114,9 +114,9 @@ svd = {
 }
 
 args = {
-    "epochs": 100,
+    "epochs": 50,
     "batch_size": 6,
-    "max_batches": 8,
+    "max_batches": 100,
     'optim' : optim_params,
     'htdemucs' : ht_demucs_params,
     'quant' : {
@@ -188,13 +188,15 @@ def get_model():
 def get_datasets(bs):
     train_dataset = PianoDataset(train=True, seq_len=44100*10, mono=True)
     val_dataset = PianoDataset( train=False, seq_len=44100*10, mono=True)
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, num_workers=4, pin_memory=True)
-    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, num_workers=4, pin_memory=True)
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=bs, shuffle=True, num_workers=args.misc.num_workers, pin_memory=True)
+    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=bs, num_workers=args.misc.num_workers, pin_memory=True)
     return {"train": train_dataloader, "valid": val_dataloader}
 
 
 if __name__ == "__main__":
-    model = get_model()
+    torch.set_float32_matmul_precision('medium')
+    model = get_model().to('cuda')
+    #model = torch.compile(model)
     optimizer = get_optimizer(model)
     dataloaders = get_datasets(args.batch_size)
     solver = Solver(dataloaders, model, optimizer, args)

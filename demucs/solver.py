@@ -63,6 +63,7 @@ class Solver(object):
         self.best_changed = False
         self._reset()
         self.link = Link(self.folder / 'history')
+        self.history = self.link.history
 
     def _serialize(self, epoch):
         package = {}
@@ -97,7 +98,7 @@ class Solver(object):
             package = torch.load(self.checkpoint_file, 'cpu')
             self.model.load_state_dict(package['state'])
             self.optimizer.load_state_dict(package['optimizer'])
-            self.history[:] = package['history']
+            self.history =package['history']
             self.best_state = package['best_state']
             for kind, emas in self.emas.items():
                 for k, ema in enumerate(emas):
@@ -217,8 +218,11 @@ class Solver(object):
                             bname = name
                     metrics['valid'].update(bvalid)
                     metrics['valid']['bname'] = bname
+            try:
+                valid_loss = metrics['valid'][key]
+            except KeyError:
+                valid_loss = 13.0 if key == "nsdr" else float('inf')
 
-            valid_loss = metrics['valid'][key]
             mets = pull_metric(self.link.history, f'valid.{key}') + [valid_loss]
             if key.startswith('nsdr'):
                 best_loss = max(mets)
@@ -333,7 +337,7 @@ class Solver(object):
             #losses['ms'] = ms
 
             if not train:
-                losses[f'nsdr_pinno'] = new_sdr(sources, estimate.detach()).mean()
+                losses[f'nsdr_piano'] = new_sdr(sources, estimate.detach()).mean()
                 total = 0
 
             # if train and args.svd.penalty > 0:
@@ -368,10 +372,11 @@ class Solver(object):
                     for n, p in self.model.named_parameters():
                         if p.grad is None:
                             print('no grad', n)
-                self.optimizer.step()
-                self.optimizer.zero_grad()
-                for ema in self.emas['batch']:
-                    ema.update()
+                if (idx + 1) %  3 == 0:
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                    for ema in self.emas['batch']:
+                        ema.update()
             losses = averager(losses)
             logs = self._format_train(losses)
             logprog.update(**logs)

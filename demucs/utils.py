@@ -58,7 +58,11 @@ def pull_metric(history: tp.List[dict], name: str):
     for metrics in history:
         metric = metrics
         for part in name.split("."):
-            metric = metric[part]
+            if part in metric:
+                metric = metric[part]
+            else:
+                metric = 0
+                break
         out.append(metric)
     return out
 
