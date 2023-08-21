@@ -370,11 +370,11 @@ class Solver(object):
                     for n, p in self.model.named_parameters():
                         if p.grad is None:
                             print('no grad', n)
-                if (idx + 1) %  3 == 0:
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
-                    for ema in self.emas['batch']:
-                        ema.update()
+                #if (idx + 1) %  3 == 0:
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+                for ema in self.emas['batch']:
+                    ema.update()
             losses = averager(losses)
             logs = self._format_train(losses)
             logprog.update(**logs)
